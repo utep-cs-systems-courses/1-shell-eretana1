@@ -19,15 +19,15 @@ while True:
     args = input(f'{sys.ps1}').split(" ")
 
     # Check if user wants to exit
-    if args == 'exit':
-        sys.exit(1)
-
+    if args[0] == 'exit':
+        sys.exit(2)
+            
     # Fork to create child for read command
-    os.write(1, ("Fork with PID: %d" % pid).encode())
+    os.write(1, ("Fork with PID: %d\n" % pid).encode())
     rc = os.fork()
 
     if rc < 0:  # Fork has failed
-        os.write(2, ("err: Failed to fork with PID: %d" % pid).encode())
+        os.write(2, ("err: Failed to fork with PID: %d\n" % pid).encode())
         sys.exit(1)
     elif rc == 0:  # Child In progress
         if '>' in args or '>>' in args:
@@ -37,16 +37,14 @@ while True:
 
         for directory in re.split(":", os.environ['PATH']):  # try each directory in the path
             program = "%s/%s" % (directory, args[0])
-            os.write(1, ("Child:  ...trying to exec %s\n" % program).encode())
             try:
                 os.execve(program, args, os.environ)  # try to exec program
             except FileNotFoundError:
                 pass
 
         # Unsuccessful to run program. Display Error
-        os.write(2, ("Child:  ...Error: Could not exec %s\n" % args[0]).encode())
+        os.write(2, ("%s command not found.\n" % args[0]).encode())
         sys.exit(1)
 
     else:  # Parent waits for child to finish
         child_pid = os.wait()
-        os.write(1, ("Child PID: %d terminated with exit code" % child_pid).encode())
