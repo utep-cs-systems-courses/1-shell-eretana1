@@ -29,10 +29,10 @@ while True:
     if rc < 0:  # Fork has failed
         os.write(2, ("err: Failed to fork with PID: %d\n" % pid).encode())
         sys.exit(1)
-    elif rc == 0:  # Child In progress
+    elif rc == 0:  # Child in progress
         if '>' in args or '>>' in args:
             os.close(1)  # redirect child's stdout
-            os.open("shell-output.txt", os.O_CREAT | os.O_WRONLY);
+            os.open(args[1], os.O_CREAT | os.O_WRONLY);
             os.set_inheritable(1, True)
 
         for directory in re.split(":", os.environ['PATH']):  # try each directory in the path
@@ -47,4 +47,5 @@ while True:
         sys.exit(1)
 
     else:  # Parent waits for child to finish
-        child_pid = os.wait()
+        child_pid_code = os.wait()
+        os.write(1, ('Process terminated with exit code %d' % child_pid_code).encode())
