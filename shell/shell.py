@@ -2,7 +2,6 @@
 
 import os, sys, re
 
-
 # Check for PS1 else set it as $
 try:
     sys.ps1
@@ -19,13 +18,13 @@ pid = os.getpid()  # Parent PID
 args = ''
 while True:
     # Read command from user
-    os.write(1, (f'~{os.getcwd()}: {sys.ps1}').encode())
-    args = os.read(0,1000).decode().split()
+    os.write(1, f'~{os.getcwd()}: {sys.ps1}'.encode())
+    args = os.read(0, 1000).decode().split()
 
-    # Check if background tasks enabled
+    # Check if background tasks enabled and enable args
     bg_enabled = True if '&' in args else False
-    if bg_enabled: args = args[:-1]
-        
+    args = args[:-1] if bg_enabled else args
+
     # No user Input exists
     if len(args) == 0:
         continue
@@ -43,6 +42,7 @@ while True:
                 os.chdir(f'{args[1]}')
             except:
                 os.write(1, ('Invalid directory: %s\n' % args[1]).encode())
+
     else:
         # Fork to create child for read command
         rc = os.fork()
@@ -51,7 +51,7 @@ while True:
             sys.exit(1)
         elif rc == 0:  # Child in progress
             error_state = False
-            
+
             if '>' in args:
                 file_index = args.index('>')
                 os.close(1)  # redirect child's stdout
@@ -62,6 +62,7 @@ while True:
                 except FileNotFoundError:
                     error_state = False
                     os.write(1, ('bash: %s: No such file or directory' % args[file_index + 1]).encode())
+
             elif '<' in args:
                 file_index = args.index('<')
                 os.close(0)  # Redirect child's stdin
@@ -72,30 +73,52 @@ while True:
                 except FileNotFoundError:
                     error_state = True
                     os.write(1, ('bash: %s: No such file or directory \n' % args[file_index + 1]).encode())
-            elif '|' in args:
-              os.close(1)
-              os.dup(outFd)
-              for fd in (inFd, outFd):
-                  os.close(fd)
-                    
-            if not error_state:
-                for directory in re.split(":", os.environ['PATH']):  # try each directory in the path
-                    program = "%s/%s" % (directory, args[0])
-                    try:
-                        os.execve(program, args, os.environ)  # try to exec program 
-                    except FileNotFoundError:
-                        pass
 
-                # Unsuccessful to run program. Display Error
-                os.write(1, ("%s command not found.\n" % args[0]).encode())
-            sys.exit(1)
+            elif '|' in args:
+                os.close(1)
+                os.dup(outFd)
+                exec_program(args.split('|')[0])
+
+            else:
+                # If there isn't a command error then execute a program
+                if not error_state:
+                    exec_program(args)
+
+                # Close fd in pipes
+                for fd in (inFd, outFd):
+                    os.close(fd)
+
+                # End child process after execution
+                sys.exit(1)
 
         else:  # Parent waits for child to finish
             if bg_enabled is False:
                 os.wait()
 
+            # Check if you are executing a pipe command
+            if '|' in args:
+                rc_2 = os.fork()
+
+                if rc_2 < 0:   # Fork has failed
+                    sys.exit(1)
+
+                elif rc_2 == 0:  # Second child in progress
+                    os.close(0)
+                    os.dup(inFd)
+                    exec_program(args.split('|')[1])
+
             # Close all pipes
-            os.close(0)
-            os.dup(inFd)
             for fd in (outFd, inFd):
                 os.close(fd)
+
+
+def exec_program(exec_args):
+    for directory in re.split(":", os.environ['PATH']):  # try each directory in the path
+        program = "%s/%s" % (directory, exec_args[0])
+        try:
+            os.execve(program, exec_args, os.environ)  # try to exec program
+        except FileNotFoundError:
+            pass
+
+    # Unsuccessful to run program. Display Error
+    os.write(1, ("%s command not found.\n" % args[0]).encode())
