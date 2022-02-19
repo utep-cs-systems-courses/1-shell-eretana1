@@ -2,6 +2,19 @@
 
 import os, sys, re
 
+
+def exec_program(exec_args):
+    for directory in re.split(":", os.environ['PATH']):  # try each directory in the path
+        program = "%s/%s" % (directory, exec_args[0])
+        try:
+            os.execve(program, exec_args, os.environ)  # try to exec program
+        except FileNotFoundError:
+            pass
+
+    # Unsuccessful to run program. Display Error
+    os.write(1, ("%s command not found.\n" % args[0]).encode())
+
+    
 # Check for PS1 else set it as $
 try:
     sys.ps1
@@ -77,16 +90,15 @@ while True:
             elif '|' in args:
                 os.close(1)
                 os.dup(outFd)
-                exec_program(args.split('|')[0])
+                # Close fd in pipes
+                for fd in (inFd, outFd):
+                    os.close(fd)
+                exec_program(args[:args.index('|')])
 
             else:
                 # If there isn't a command error then execute a program
                 if not error_state:
                     exec_program(args)
-
-                # Close fd in pipes
-                for fd in (inFd, outFd):
-                    os.close(fd)
 
                 # End child process after execution
                 sys.exit(1)
@@ -105,20 +117,12 @@ while True:
                 elif rc_2 == 0:  # Second child in progress
                     os.close(0)
                     os.dup(inFd)
-                    exec_program(args.split('|')[1])
+                    # Close all pipes
+                    for fd in (outFd, inFd):
+                        os.close(fd)
+                    exec_program(args[args.index('|'):])
 
-            # Close all pipes
-            for fd in (outFd, inFd):
-                os.close(fd)
+                else:
+                    os.wait()
+    
 
-
-def exec_program(exec_args):
-    for directory in re.split(":", os.environ['PATH']):  # try each directory in the path
-        program = "%s/%s" % (directory, exec_args[0])
-        try:
-            os.execve(program, exec_args, os.environ)  # try to exec program
-        except FileNotFoundError:
-            pass
-
-    # Unsuccessful to run program. Display Error
-    os.write(1, ("%s command not found.\n" % args[0]).encode())
