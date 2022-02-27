@@ -2,6 +2,39 @@
 
 import os, sys, re
 
+def exec_pipe(exec_args, bg_enabled):
+    inFd, outFd = os.pipe()
+    for fd in (inFd, outFd):
+        os.set_inheritable(fd, True)
+        
+    rc = os.fork()
+
+    if rc < 0:  # Failed fork
+        os.write(1, 'Failed to fork.'.encode())
+        sys.exit(1)
+        
+    elif rc == 0:
+        os.close(1)
+        os.dup(outFd)
+        os.set_inheritable(1, True)
+        
+        # Close all pipes
+        for fd in (inFd, outFd):
+            os.close(fd)
+        exec_program(exec_args[:exec_args.index('|')])
+        sys.exit(1)
+    else:
+        if bg_enabled:
+            os.wait()
+            
+        os.close(0)
+        os.dup(inFd)
+        os.set_inheritable(0, True)
+        # Close fd in pipes
+        for fd in (outFd, inFd):
+            os.close(fd)
+        exec_program(exec_args[exec_args.index('|') + 1:])
+        sys.exit(1)
 
 def exec_program(exec_args):
     for directory in re.split(":", os.environ['PATH']):  # try each directory in the path
@@ -55,6 +88,10 @@ while True:
                 os.chdir(f'{args[1]}')
             except:
                 os.write(1, ('Invalid directory: %s\n' % args[1]).encode())
+                
+    # Execute pipes
+    elif '|' in args:
+        exec_pipe(args, bg_enabled)
 
     else:
         # Fork to create child for read command
@@ -87,14 +124,6 @@ while True:
                     error_state = True
                     os.write(1, ('bash: %s: No such file or directory \n' % args[file_index + 1]).encode())
 
-            elif '|' in args:
-                os.close(1)
-                os.dup(outFd)
-                # Close fd in pipes
-                for fd in (inFd, outFd):
-                    os.close(fd)
-                exec_program(args[:args.index('|')])
-
             else:
                 # If there isn't a command error then execute a program
                 if not error_state:
@@ -107,22 +136,5 @@ while True:
             if bg_enabled is False:
                 os.wait()
 
-            # Check if you are executing a pipe command
-            if '|' in args:
-                rc_2 = os.fork()
-
-                if rc_2 < 0:   # Fork has failed
-                    sys.exit(1)
-
-                elif rc_2 == 0:  # Second child in progress
-                    os.close(0)
-                    os.dup(inFd)
-                    # Close all pipes
-                    for fd in (outFd, inFd):
-                        os.close(fd)
-                    exec_program(args[args.index('|'):])
-
-                else:
-                    os.wait()
     
 
