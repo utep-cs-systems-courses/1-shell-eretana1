@@ -2,6 +2,9 @@
 
 import os, sys, re
 
+
+# inFD = read file descriptor
+# outFD = write file descriptor
 def exec_pipe(exec_args, bg_enabled):
     inFd, outFd = os.pipe()
     for fd in (inFd, outFd):
@@ -13,28 +16,47 @@ def exec_pipe(exec_args, bg_enabled):
         os.write(1, 'Failed to fork.'.encode())
         sys.exit(1)
         
-    elif rc == 0:
+    elif rc == 0: # close writing standard FD to redirect output
         os.close(1)
         os.dup(outFd)
         os.set_inheritable(1, True)
         
-        # Close all pipes
         for fd in (inFd, outFd):
             os.close(fd)
-        exec_program(exec_args[:exec_args.index('|')])
-        sys.exit(1)
-    else:
-        if bg_enabled:
-            os.wait()
             
-        os.close(0)
-        os.dup(inFd)
-        os.set_inheritable(0, True)
-        # Close fd in pipes
-        for fd in (outFd, inFd):
-            os.close(fd)
-        exec_program(exec_args[exec_args.index('|') + 1:])
+        exec_args = exec_args[:exec_args.index('|')]
+        exec_program(exec_args)
         sys.exit(1)
+        
+    else:
+        rc_2 = os.fork()
+
+        if rc_2 < 0:
+            os.write(1, 'Failed to fork second child.'.encode())
+            sys.exit(1)
+            
+        elif rc_2 == 0:
+            os.close(0)
+            os.dup(inFd)
+            os.set_inheritable(0, True)
+        
+            for fd in (outFd, inFd):
+                os.close(fd)
+                
+            exec_args = exec_args[exec_args.index('|') + 1:]
+            exec_program(exec_args)
+            sys.exit(1)
+
+        else:
+            if bg_enabled is False:
+                os.wait()
+
+        for fd in (inFd, outFd):
+            os.close(fd)
+                
+        if bg_enabled is False:
+            os.wait()
+                
 
 def exec_program(exec_args):
     for directory in re.split(":", os.environ['PATH']):  # try each directory in the path
